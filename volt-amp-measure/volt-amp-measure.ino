@@ -68,17 +68,15 @@ byte not_charge[8] = {
 
 void setup(){
   Serial.begin(9600);
-
   lcd.begin();
   lcd.createChar(0, battery);
   lcd.createChar(1, charge);
   lcd.createChar(2, not_charge);
   lcd.createChar(3, energy);
-  lcd.home();
-  
+  lcd.home();  
 }
 
-int votlMeasure(Pin) {
+int votlMeasure(int Pin) {
   float R1 = 30000.0;
   float R2 = 7500.0;
   float adc_voltage = 0.0;
@@ -90,7 +88,7 @@ int votlMeasure(Pin) {
   return adc_voltage / (R2/(R1+R2)); 
 }
 
-int ampMeasure(Pin) {
+int ampMeasure(int Pin) {
   unsigned int x=0;
   float AcsValue=0.0,Samples=0.0,AvgAcs=0.0,AcsValueF=0.0;
 
@@ -104,48 +102,28 @@ int ampMeasure(Pin) {
   return ((2.5 - (AvgAcs * (5.0 / 1024.0)) )/0.185);
 }
 
+void lcdPrint(int textCordsX, int textCordsY, char printMsg, int iconCordsX, int iconCordsY, int iconNumber, char textPrint) {
+  lcd.setCursor(textCordsX, textCordsY);
+  lcd.print(printMsg);
+  lcd.setCursor(iconCordsX, iconCordsY);
+  iconNumber == -1 ? lcd.write(iconNumber) : lcd.print(textPrint);
+}
+
 void loop() {
   float battVoltSens = votlMeasure(voltageSenorPinBatt);
-  float battAmpConsumption = ampMeasure(currentSensorPinBatt);
+  float battAmpConsumption = (ampMeasure(currentSensorPinBatt)) < 0 ? 0.0 : ampMeasure(currentSensorPinBatt);
   float solarVoltSens = votlMeasure(voltageSenorPinSolar);
-
-  if (battAmpConsumption < 0){
-    battAmpConsumption = 0.0;
-  } 
   
   Serial.println("Battery voltage: " + String(battVoltSens));
   Serial.println("Battery Amperage: " + String(battAmpConsumption));  
   Serial.println("Solar voltage: " + String(solarVoltSens));
   Serial.println("-------------------------------");
 
-  if (solarVoltSens > 11.0) {
-    lcd.setCursor(0, 0);
-    lcd.print("Charge State: ");
-    lcd.setCursor(15, 0);
-    lcd.write(1);
+  solarVoltSens > 11.0 ? lcdPrint(0, 0, "Charge State: ", 15, 0, 1, " ") : lcdPrint(0, 0, "Charge State: ", 15, 0, 2, " ");
 
-  } else {
-    lcd.setCursor(0, 0);
-    lcd.print("Charge State: ");
-    lcd.setCursor(15, 0);
-    lcd.write(2);
+  lcdPrint(0, 1, "Power Volt:  ", 15, 1, -1, solarVoltSens);
+  lcdPrint(0, 3, "Power Amp: ", 15, 2, -1, battAmpConsumption);
+  lcdPrint(0, 3, "Solar Volt: ", 15, 3, 1, " ");
 
-  }
-
-  lcd.setCursor(0, 1);
-  lcd.print("Power Volt: ");
-  lcd.setCursor(15, 1);
-  lcd.print(solarVoltSens);
-
-  lcd.setCursor(0, 2);
-  lcd.print("Power Amp: ");
-  lcd.setCursor(15, 2);
-  lcd.print(battAmpConsumption);
-
-  lcd.setCursor(0, 3);
-  lcd.print("Solar Volt: ");
-  lcd.setCursor(15, 3);
-  lcd.print(solarVoltSens); 
-    
   delay(100);
 }
