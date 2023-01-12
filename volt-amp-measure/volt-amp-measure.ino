@@ -1,22 +1,38 @@
-#define ANALOG_IN_PIN A0
-#define ANALOG_IN_PIN_SOLAR A2
+#define voltageSenorPinBatt A0
+#define currentSensorPinBatt A1
+#define voltageSenorPinSolar A2
+#define DIGITAL_IN_PIN 2
+
 
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 
+#include <ArduinoMqttClient.h>
+#include <SPI.h>
+#include <WiFiNINA.h>
+
+char ssid[] = "lab115";
+char pass[] = "115115115";   // your network password (use for WPA, or use as key for WEP)
+
+WiFiClient wifiClient;
+MqttClient mqttClient(wifiClient);
+
+const char broker[] = "192.168.1.217";
+int        port     = 1883;
+const char topic[]  = "testtest";
+const char topic1[]  = "testtest1";
+const char topic2[]  = "testtest2";
+
+
+//set interval for sending messages (milliseconds)
+const long interval = 8000;
+unsigned long previousMillis = 0;
+
+int count = 0;
+
+
 // Set the LCD address to 0x27 in PCF8574 by NXP and Set to 0x3F in PCF8574A by Ti
 LiquidCrystal_I2C lcd(0x27, 16, 3);
-
-byte customChar[] = {
-  B11111,
-  B00000,
-  B11111,
-  B00100,
-  B00100,
-  B11111,
-  B00000,
-  B11111
-};
 
 byte battery[8] =  //icon for battery
 {
@@ -66,132 +82,171 @@ byte not_charge[8]=
   0b00000,
 };
 
-float adc_voltage = 0.0;
-float in_voltage = 0.0;
-float adc_voltage_s = 0.0;
-float in_voltage_s = 0.0;
-
-// Floats for resistor values in divider (in ohms)
-float R1 = 30000.0;
-float R2 = 7500.0; 
-
-// Float for Reference Voltage
-float ref_voltage = 5.0;
-float ref_voltage_s = 5.0;
-
-// Integer for ADC value
-int adc_value = 0;
-int adc_value_s = 0;
 
 void setup(){
   // Setup Serial Monitor
   Serial.begin(9600);
-  pinMode(9, OUTPUT);
-
+  
   lcd.begin();
   lcd.createChar(0, battery);
   lcd.createChar(1, charge);
   lcd.createChar(2, not_charge);
   lcd.createChar(3, energy);
   lcd.home();
+
+  // attempt to connect to Wifi network:
+  lcd.setCursor(0, 0);
+  lcd.print("Connecting: ");
+  lcd.setCursor(13, 0);
+  lcd.print(ssid);
+
+  Serial.print("Attempting to connect to WPA SSID: ");
+  Serial.println(ssid);
+  while (WiFi.begin(ssid, pass) != WL_CONNECTED) {
+    // failed, retry
+    lcd.setCursor(0, 1);
+    lcd.print("Connection Failed!");
+    Serial.print(".");
+    delay(5000);
+  }
+
+  Serial.println("You're connected to the network");
+  Serial.println();
+
+  Serial.print("Attempting to connect to the MQTT broker: ");
+  Serial.println(broker);
+
+  if (!mqttClient.connect(broker, port)) {
+    Serial.print("MQTT connection failed! Error code = ");
+    Serial.println(mqttClient.connectError());
+
+    while (1);
+  }
+
+  Serial.println("You're connected to the MQTT broker!");
+  Serial.println();
+
+  pinMode(DIGITAL_IN_PIN, OUTPUT);
+
+  lcd.setCursor(13, 0);
+  lcd.print("      ");
   
 }
 
+float votlMeasure(int Pin) {
+  float R1 = 30000.0;
+  float R2 = 7500.0;
+  float adc_voltage = 0.0;
+  float ref_voltage = 5.0;
+  int adc_value = 0;
+
+  adc_value = analogRead(Pin);  
+  adc_voltage  = (adc_value * ref_voltage) / 1024.0; 
+
+  return adc_voltage / (R2/(R1+R2)); 
+}
+
+float ampMeasure(int Pin) {
+  unsigned int x=0;
+  float AcsValue=0.0,Samples=0.0,AvgAcs=0.0,AcsValueF=0.0;
+
+  for (int x = 0; x < 150; x++) {
+    AcsValue = analogRead(Pin);
+    Serial.println(AcsValue);
+    Samples = Samples + AcsValue;
+    delay (3); 
+  }
+
+  AvgAcs=Samples/150.0;
+  return (((2.5 - (AvgAcs * (5.0 / 1024.0)) )/0.185) - 0.57);
+}
+
 void loop(){
-      digitalWrite(9, HIGH);
+  float battVoltSens = votlMeasure(voltageSenorPinBatt);
+  Serial.println(ampMeasure(currentSensorPinBatt));
+  Serial.println((ampMeasure(currentSensorPinBatt)) < 0 ? 0.0 : ampMeasure(currentSensorPinBatt));
+  float battAmpConsumption = (ampMeasure(currentSensorPinBatt)) < 0 ? 0.0 : ampMeasure(currentSensorPinBatt);
+  float solarVoltSens = votlMeasure(voltageSenorPinSolar);
+  
+    // call poll() regularly to allow the library to send MQTT keep alive which
+  // avoids being disconnected by the broker
+  mqttClient.poll();
 
-    // Read the Analog Input
-    adc_value = analogRead(ANALOG_IN_PIN);
-    
-    // Determine voltage at ADC input
-    adc_voltage  = (adc_value * ref_voltage) / 1024.0; 
-    
-    // Calculate voltage at divider input
-    in_voltage = adc_voltage / (R2/(R1+R2)); 
-    
-    // Print results to Serial Monitor to 2 decimal places
-    Serial.println("Battery voltage: " + String(in_voltage));
+  unsigned long currentMillis = millis();
+
+  if (currentMillis - previousMillis >= interval) {
+    // save the last time a message was sent
+    previousMillis = currentMillis;
 
 
-    
-    
-    //amp measure
-
-    unsigned int x=0;
-    float AcsValue=0.0,Samples=0.0,AvgAcs=0.0,AcsValueF=0.0;
-
-    for (int x = 0; x < 150; x++){ //Get 150 samples
-      AcsValue = analogRead(A1);     //Read current sensor values   
-      Samples = Samples + AcsValue;  //Add samples together
-      delay (3); // let ADC settle before next sample 3ms
-      }
-    AvgAcs=Samples/150.0;//Taking Average of Samples
-
-    //((AvgAcs * (5.0 / 1024.0)) is converitng the read voltage in 0-5 volts
-    //2.5 is offset(I assumed that arduino is working on 5v so the viout at no current comes
-    //out to be 2.5 which is out offset. If your arduino is working on different voltage than 
-    //you must change the offset according to the input voltage)
-    //0.185v(185mV) is rise in output voltage when 1A current flows at input
-    AcsValueF = ((2.5 - (AvgAcs * (5.0 / 1024.0)) )/0.185);
-
-    Serial.println("Battery Amperage: " + String(AcsValueF));//Print the read current on Serial monitor
-    delay(3);
-
-    // voltage measure solar panel
-
-    // Read the Analog Input
-    adc_value_s = analogRead(ANALOG_IN_PIN_SOLAR);
-    
-    // Determine voltage at ADC input
-    adc_voltage_s  = (adc_value_s * ref_voltage_s) / 1024.0; 
-    
-    // Calculate voltage at divider input
-    in_voltage_s = adc_voltage_s / (R2/(R1+R2)); 
-    
-    // Print results to Serial Monitor to 2 decimal places
-    Serial.println("Solar voltage: " + String(in_voltage_s));
+    Serial.println("Battery voltage: " + String(battVoltSens));
+    Serial.println("Battery Amperage: " + String(battAmpConsumption));  
+    Serial.println("Solar voltage: " + String(solarVoltSens));
     Serial.println("-------------------------------");
-    delay(100);
 
-    if (in_voltage_s > 11.0) {
-      lcd.setCursor(0, 0);
-      lcd.print("Charge State: ");
-      lcd.setCursor(15, 0);
-      lcd.write(1);
+    mqttClient.beginMessage(topic);
+    mqttClient.print(battVoltSens);
+    mqttClient.endMessage();
 
-    }
-    else {
-      lcd.setCursor(0, 0);
-      lcd.print("Charge State: ");
-      lcd.setCursor(15, 0);
-      lcd.write(2);
+    mqttClient.beginMessage(topic1);
+    mqttClient.print(battAmpConsumption);
+    mqttClient.endMessage();
 
-    }
+    mqttClient.beginMessage(topic2);
+    mqttClient.print(solarVoltSens);
+    mqttClient.endMessage();
 
-    lcd.setCursor(0, 1);
-    lcd.print("Power Volt: ");
-    lcd.setCursor(15, 1);
-    lcd.print(in_voltage);
-
-    if (AcsValueF < 0){
-      AcsValueF = 0.0;
-    } 
-
-    lcd.setCursor(0, 2);
-    lcd.print("Power Amp: ");
-    lcd.setCursor(15, 2);
-    lcd.print(AcsValueF);
-
-    lcd.setCursor(0, 3);
-    lcd.print("Solar Volt: ");
-    lcd.setCursor(15, 3);
-    lcd.print(in_voltage_s);
-    
+    Serial.println();
+  }
 
 
 
+  
 
-    
-    
+
+  delay(100);
+
+  if (solarVoltSens > 11.0) {
+    lcd.setCursor(0, 0);
+    lcd.print("Charge State: ");
+    lcd.setCursor(15, 0);
+    lcd.write(1);
+    digitalWrite(DIGITAL_IN_PIN , HIGH);
+
+  }
+  else {
+    lcd.setCursor(0, 0);
+    lcd.print("Charge State: ");
+    lcd.setCursor(15, 0);
+    lcd.write(2);
+    digitalWrite(DIGITAL_IN_PIN , LOW);
+
+  }
+  if (battVoltSens < 0){
+    battVoltSens = 0;
+  }
+
+  lcd.setCursor(0, 1);
+  lcd.print("Power Volt: ");
+  lcd.setCursor(15, 1);
+  lcd.print(battVoltSens);
+
+  if (battAmpConsumption < 0){
+    battAmpConsumption = 0.0;
+  } 
+
+  lcd.setCursor(0, 2);
+  lcd.print("Power Amp: ");
+  lcd.setCursor(15, 2);
+  lcd.print(battAmpConsumption);
+
+  if (solarVoltSens < 0){
+    solarVoltSens = 0.0;
+  }
+
+  lcd.setCursor(0, 3);
+  lcd.print("Solar Volt: ");
+  lcd.setCursor(15, 3);
+  lcd.print(solarVoltSens);
     
 }
