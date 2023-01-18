@@ -11,13 +11,13 @@
 #include <SPI.h>
 #include <WiFiNINA.h>
 
-char ssid[] = "lab115";
-char pass[] = "115115115";   // your network password (use for WPA, or use as key for WEP)
+char ssid[] = "lab119";
+char pass[] = "119119119";   // your network password (use for WPA, or use as key for WEP)
 
 WiFiClient wifiClient;
 MqttClient mqttClient(wifiClient);
 
-const char broker[] = "192.168.1.217";
+const char broker[] = "192.168.1.131";
 int        port     = 1883;
 const char topic[]  = "testtest";
 const char topic1[]  = "testtest1";
@@ -152,19 +152,16 @@ float ampMeasure(int Pin) {
 
   for (int x = 0; x < 150; x++) {
     AcsValue = analogRead(Pin);
-    Serial.println(AcsValue);
     Samples = Samples + AcsValue;
     delay (3); 
   }
 
   AvgAcs=Samples/150.0;
-  return (((2.5 - (AvgAcs * (5.0 / 1024.0)) )/0.185) - 0.57);
+  return (((2.5 - (AvgAcs * (5.0 / 1024.0)) )/0.185));
 }
 
 void loop(){
   float battVoltSens = votlMeasure(voltageSenorPinBatt);
-  Serial.println(ampMeasure(currentSensorPinBatt));
-  Serial.println((ampMeasure(currentSensorPinBatt)) < 0 ? 0.0 : ampMeasure(currentSensorPinBatt));
   float battAmpConsumption = (ampMeasure(currentSensorPinBatt)) < 0 ? 0.0 : ampMeasure(currentSensorPinBatt);
   float solarVoltSens = votlMeasure(voltageSenorPinSolar);
   
@@ -231,9 +228,7 @@ void loop(){
   lcd.setCursor(15, 1);
   lcd.print(battVoltSens);
 
-  if (battAmpConsumption < 0){
-    battAmpConsumption = 0.0;
-  } 
+
 
   lcd.setCursor(0, 2);
   lcd.print("Power Amp: ");
