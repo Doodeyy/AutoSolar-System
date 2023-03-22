@@ -26,7 +26,7 @@ battery_volt_data = deque(maxlen=max_data_points)
 def update_graphs():
     # Connect to the MQTT broker
     client = mqtt.Client()
-    #client.connect(broker_address, broker_port)
+    client.connect(broker_address, broker_port)
 
     # Subscribe to the MQTT topics
     client.subscribe(battery_amp_topic)
