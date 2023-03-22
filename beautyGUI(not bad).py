@@ -26,7 +26,7 @@ battery_volt_data = deque(maxlen=max_data_points)
 def update_graphs():
     # Connect to the MQTT broker
     client = mqtt.Client()
-    client.connect(broker_address, broker_port)
+    #client.connect(broker_address, broker_port)
 
     # Subscribe to the MQTT topics
     client.subscribe(battery_amp_topic)
@@ -78,6 +78,7 @@ def update_graphs():
     root = tk.Tk()
     root.title("Solar Panel Monitoring")
     root.geometry("800x600")
+    root.attributes("-fullscreen" , False)
 
     # Create the battery amp graph canvas and add it to the window
     canvas1 = FigureCanvasTkAgg(fig1, master=root)
@@ -114,14 +115,43 @@ def update_graphs():
         ax3.plot(battery_volt_data, "b.-")
         ax3.set_title("Battery Volt (V)")
         ax3.set_xlabel("Time")
-
+        
         # Schedule the next update after the specified interval
         root.after(update_interval, update_graphs_periodic)
+    
+    
+    #def switchMode():
+     #   if root.attributes("-fullscreen" , False):
+      #      root.attributes = ("-fullscreen", True)
+            
+       # elif root.attributes("-fullscreen" , True):
+        #    root.attributes = ("-fullscreen", False)
+            
+    #fsMode = tk.Button(root, text="Screen Mode", command=switchMode)
+   # fsMode.place(x =  0, y = 0)
+   
+    def toggle_fullscreen():
+    # get the current fullscreen state
+        state = root.attributes("-fullscreen")
 
+    # toggle the state
+        root.attributes("-fullscreen", not state)
+
+
+
+    button = tk.Button(root, text="Toggle Fullscreen", command=toggle_fullscreen)
+    button.place(x =  0, y = 0)
+
+    
+    
 # Schedule the initial update of the graphs
     update_graphs_periodic()
-
+    
+    
+    
 # Start the tkinter event loop
     root.mainloop()
-    
+
+
+
 update_graphs()
