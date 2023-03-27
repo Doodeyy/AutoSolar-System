@@ -1,8 +1,8 @@
 #define voltageSenorPinBatt A0
 #define currentSensorPinBatt A1
 #define voltageSenorPinSolar A2
-#define DIGITAL_IN_PIN 2
-
+#define DIGITAL_IN_PIN 11
+#define BUTTON_PIN 12
 
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
@@ -11,13 +11,13 @@
 #include <SPI.h>
 #include <WiFiNINA.h>
 
-char ssid[] = "lab119";
-char pass[] = "119119119";   // your network password (use for WPA, or use as key for WEP)
+char ssid[] = "vaggos";
+char pass[] = "1234567890";   // your network password (use for WPA, or use as key for WEP)
 
 WiFiClient wifiClient;
 MqttClient mqttClient(wifiClient);
 
-const char broker[] = "192.168.1.131";
+const char broker[] = "192.168.96.209";
 int        port     = 1883;
 const char topic[]  = "testtest";
 const char topic1[]  = "testtest1";
@@ -109,7 +109,9 @@ void setup(){
     Serial.print(".");
     delay(5000);
   }
-
+  lcd.setCursor(0, 1);
+  lcd.print("                  ");
+  
   Serial.println("You're connected to the network");
   Serial.println();
 
