@@ -2,6 +2,7 @@
 #define currentSensorPinBatt A1
 #define voltageSenorPinSolar A2
 #define DIGITAL_IN_PIN 11
+#define DIGITAL_IN_PIN2 13
 #define BUTTON_PIN 12
 
 #include <Wire.h>
@@ -11,21 +12,23 @@
 #include <SPI.h>
 #include <WiFiNINA.h>
 
-char ssid[] = "vaggos";
+char ssid[] = "ASSPAP";
 char pass[] = "1234567890";   // your network password (use for WPA, or use as key for WEP)
 
 WiFiClient wifiClient;
 MqttClient mqttClient(wifiClient);
 
-const char broker[] = "192.168.96.209";
+const char broker[] = "192.168.2.2";
 int        port     = 1883;
-const char topic[]  = "testtest";
-const char topic1[]  = "testtest1";
-const char topic2[]  = "testtest2";
-
+const char topic[]  = "BattVolt";
+const char topic1[]  = "BattAmp";
+const char topic2[]  = "SolarVolt";
+const char topic3[] = "EnableButton";
+bool enable;
+bool autoS;
 
 //set interval for sending messages (milliseconds)
-const long interval = 8000;
+const long interval = 2000;
 unsigned long previousMillis = 0;
 
 int count = 0;
@@ -132,6 +135,7 @@ void setup(){
 
   lcd.setCursor(13, 0);
   lcd.print("      ");
+  mqttClient.onMessage(onMqttMessage);
   
 }
 
@@ -178,10 +182,10 @@ void loop(){
     previousMillis = currentMillis;
 
 
-    Serial.println("Battery voltage: " + String(battVoltSens));
-    Serial.println("Battery Amperage: " + String(battAmpConsumption));  
-    Serial.println("Solar voltage: " + String(solarVoltSens));
-    Serial.println("-------------------------------");
+    // Serial.println("Battery voltage: " + String(battVoltSens));
+    // Serial.println("Battery Amperage: " + String(battAmpConsumption));  
+    // Serial.println("Solar voltage: " + String(solarVoltSens));
+    // Serial.println("-------------------------------");
 
     mqttClient.beginMessage(topic);
     mqttClient.print(battVoltSens);
@@ -195,12 +199,10 @@ void loop(){
     mqttClient.print(solarVoltSens);
     mqttClient.endMessage();
 
+    mqttClient.subscribe(topic3);
+
     Serial.println();
-  }
-
-
-
-  
+  } 
 
 
   delay(100);
@@ -212,8 +214,7 @@ void loop(){
     lcd.write(1);
     digitalWrite(DIGITAL_IN_PIN , HIGH);
 
-  }
-  else {
+  } else {
     lcd.setCursor(0, 0);
     lcd.print("Charge State: ");
     lcd.setCursor(15, 0);
@@ -245,5 +246,37 @@ void loop(){
   lcd.print("Solar Volt: ");
   lcd.setCursor(15, 3);
   lcd.print(solarVoltSens);
-    
+  // if(autoS == false) {
+  //   if(enable) {
+  //     digitalWrite(DIGITAL_IN_PIN , HIGH);
+  //   } else {
+  //     digitalWrite(DIGITAL_IN_PIN , HIGH);
+  //   }
+  // }
+}
+
+void onMqttMessage(int messageSize) {
+  // we received a message, print out the topic and contents
+  Serial.println("Received a message with topic '");
+  Serial.print(mqttClient.messageTopic());
+  Serial.print("', length ");
+  Serial.print(messageSize);
+  Serial.println(" bytes:");
+  // use the Stream interface to print the contents
+  while (mqttClient.available()) {
+    Serial.println((char)mqttClient.read());
+    Serial.println((char)mqttClient.read() == "f");
+    if((char)mqttClient.read() == "n") {
+      autoS = false;
+      enable = true;
+    } else if ((char)mqttClient.read() == "f") {
+      enable = false;
+      autoS = false;
+
+    } else if ((char)mqttClient.read() == "a") {
+      autoS = true;
+    }
+  }
+  Serial.println(autoS);
+  Serial.println(enable);
 }
