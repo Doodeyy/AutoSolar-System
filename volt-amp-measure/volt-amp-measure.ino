@@ -12,7 +12,7 @@
 #include <SPI.h>
 #include <WiFiNINA.h>
 
-char ssid[] = "ASSPAP";
+char ssid[] = "RONG-404";
 char pass[] = "1234567890";   // your network password (use for WPA, or use as key for WEP)
 
 WiFiClient wifiClient;
@@ -24,8 +24,8 @@ const char topic[]  = "BattVolt";
 const char topic1[]  = "BattAmp";
 const char topic2[]  = "SolarVolt";
 const char topic3[] = "EnableButton";
-bool enable;
-bool autoS;
+bool enable = false;
+bool autoS = true;
 
 //set interval for sending messages (milliseconds)
 const long interval = 2000;
@@ -100,7 +100,7 @@ void setup(){
   // attempt to connect to Wifi network:
   lcd.setCursor(0, 0);
   lcd.print("Connecting: ");
-  lcd.setCursor(13, 0);
+  lcd.setCursor(12, 0);
   lcd.print(ssid);
 
   Serial.print("Attempting to connect to WPA SSID: ");
@@ -113,7 +113,7 @@ void setup(){
     delay(5000);
   }
   lcd.setCursor(0, 1);
-  lcd.print("                  ");
+  lcd.print("                                               ");
   
   Serial.println("You're connected to the network");
   Serial.println();
@@ -121,22 +121,25 @@ void setup(){
   Serial.print("Attempting to connect to the MQTT broker: ");
   Serial.println(broker);
 
-  if (!mqttClient.connect(broker, port)) {
+  while (!mqttClient.connect(broker, port)) {
     Serial.print("MQTT connection failed! Error code = ");
     Serial.println(mqttClient.connectError());
-
-    while (1);
   }
 
   Serial.println("You're connected to the MQTT broker!");
   Serial.println();
 
   pinMode(DIGITAL_IN_PIN, OUTPUT);
+  pinMode(DIGITAL_IN_PIN2, OUTPUT);
 
   lcd.setCursor(13, 0);
-  lcd.print("      ");
+  lcd.print("                                          ");
   mqttClient.onMessage(onMqttMessage);
-  
+  Serial.print("Subscribing to topic: ");
+  Serial.println(topic3);
+  mqttClient.subscribe(topic3);
+  Serial.println();
+
 }
 
 float votlMeasure(int Pin) {
@@ -152,9 +155,9 @@ float votlMeasure(int Pin) {
   return adc_voltage / (R2/(R1+R2)); 
 }
 
-float ampMeasure(int Pin) {
+int ampMeasure(int Pin, float volt) {
   unsigned int x=0;
-  float AcsValue=0.0,Samples=0.0,AvgAcs=0.0,AcsValueF=0.0;
+  float AcsValue=0.0, Samples=0.0, AvgAcs=0.0, AcsValueF=0.0;
 
   for (int x = 0; x < 150; x++) {
     AcsValue = analogRead(Pin);
@@ -163,29 +166,22 @@ float ampMeasure(int Pin) {
   }
 
   AvgAcs=Samples/150.0;
-  return (((2.5 - (AvgAcs * (5.0 / 1024.0)) )/0.185));
+  return ((((AvgAcs * (5.0 / 1024.0)) )/0.185)- 2.5);
 }
 
 void loop(){
-  float battVoltSens = votlMeasure(voltageSenorPinBatt);
-  float battAmpConsumption = (ampMeasure(currentSensorPinBatt)) < 0 ? 0.0 : ampMeasure(currentSensorPinBatt);
-  float solarVoltSens = votlMeasure(voltageSenorPinSolar);
-  
-    // call poll() regularly to allow the library to send MQTT keep alive which
-  // avoids being disconnected by the broker
   mqttClient.poll();
+
+  float battVoltSens = votlMeasure(voltageSenorPinBatt);
+  float battAmpConsumption = (ampMeasure(currentSensorPinBatt, battVoltSens)) < 0 ? 0.0 : ampMeasure(currentSensorPinBatt, battVoltSens);
+  float solarVoltSens = votlMeasure(voltageSenorPinSolar);
+
 
   unsigned long currentMillis = millis();
 
   if (currentMillis - previousMillis >= interval) {
     // save the last time a message was sent
     previousMillis = currentMillis;
-
-
-    // Serial.println("Battery voltage: " + String(battVoltSens));
-    // Serial.println("Battery Amperage: " + String(battAmpConsumption));  
-    // Serial.println("Solar voltage: " + String(solarVoltSens));
-    // Serial.println("-------------------------------");
 
     mqttClient.beginMessage(topic);
     mqttClient.print(battVoltSens);
@@ -199,84 +195,104 @@ void loop(){
     mqttClient.print(solarVoltSens);
     mqttClient.endMessage();
 
-    mqttClient.subscribe(topic3);
 
-    Serial.println();
+    // Serial.println();
   } 
 
 
-  delay(100);
-
-  if (solarVoltSens > 11.0) {
-    lcd.setCursor(0, 0);
-    lcd.print("Charge State: ");
-    lcd.setCursor(15, 0);
-    lcd.write(1);
-    digitalWrite(DIGITAL_IN_PIN , HIGH);
-
+  if(autoS == false) {
+    if(enable) {
+      // Serial.println("ON");
+      digitalWrite(DIGITAL_IN_PIN , HIGH);
+    } else {
+      // Serial.println("OFF");
+      digitalWrite(DIGITAL_IN_PIN , LOW);
+    }
   } else {
-    lcd.setCursor(0, 0);
-    lcd.print("Charge State: ");
-    lcd.setCursor(15, 0);
-    lcd.write(2);
-    digitalWrite(DIGITAL_IN_PIN , LOW);
+      // Serial.println("AUTO");
+    if (solarVoltSens > 11.0) {
+      lcd.setCursor(0, 0);
+      lcd.print("Charge State: ");
+      lcd.setCursor(15, 0);
+      lcd.write(1);
+      digitalWrite(DIGITAL_IN_PIN , HIGH);
 
+    } else {
+      lcd.setCursor(0, 0);
+      lcd.print("Charge State: ");
+      lcd.setCursor(15, 0);
+      lcd.write(2);
+      digitalWrite(DIGITAL_IN_PIN , LOW);
+
+    }
   }
+
+  if(solarVoltSens > 14 && solarVoltSens >= 5) {
+    digitalWrite(DIGITAL_IN_PIN2, HIGH);
+  } else {
+    digitalWrite(DIGITAL_IN_PIN2, LOW);
+  }
+
   if (battVoltSens < 0){
     battVoltSens = 0;
   }
 
   lcd.setCursor(0, 1);
-  lcd.print("Power Volt: ");
+  lcd.print("Battary: ");
   lcd.setCursor(15, 1);
-  lcd.print(battVoltSens);
+  lcd.print((int(battVoltSens) * 100 ) / 14);
+  lcd.print("%");
 
-
-
-  lcd.setCursor(0, 2);
-  lcd.print("Power Amp: ");
-  lcd.setCursor(15, 2);
-  lcd.print(battAmpConsumption);
+  // lcd.setCursor(0, 2);
+  // lcd.print("Power Amp: ");
+  // lcd.setCursor(15, 2);
+  // lcd.print(int(battAmpConsumption));
+  // lcd.print("W");
 
   if (solarVoltSens < 0){
     solarVoltSens = 0.0;
   }
 
-  lcd.setCursor(0, 3);
-  lcd.print("Solar Volt: ");
-  lcd.setCursor(15, 3);
-  lcd.print(solarVoltSens);
-  // if(autoS == false) {
-  //   if(enable) {
-  //     digitalWrite(DIGITAL_IN_PIN , HIGH);
-  //   } else {
-  //     digitalWrite(DIGITAL_IN_PIN , HIGH);
-  //   }
-  // }
+  lcd.setCursor(0, 2);
+  lcd.print("Solar: ");
+  lcd.setCursor(15, 2);
+  lcd.print((int(solarVoltSens) * 100 ) / 20);
+  lcd.print("%");
+
+
 }
 
 void onMqttMessage(int messageSize) {
-  // we received a message, print out the topic and contents
-  Serial.println("Received a message with topic '");
-  Serial.print(mqttClient.messageTopic());
-  Serial.print("', length ");
-  Serial.print(messageSize);
-  Serial.println(" bytes:");
-  // use the Stream interface to print the contents
+  Serial.println("EGINE TRIGGER NAIIIIII");
+  char message[messageSize + 1];
+  int index = 0;
+  
+  // read the message into a buffer
   while (mqttClient.available()) {
-    Serial.println((char)mqttClient.read());
-    Serial.println((char)mqttClient.read() == "f");
-    if((char)mqttClient.read() == "n") {
-      autoS = false;
-      enable = true;
-    } else if ((char)mqttClient.read() == "f") {
-      enable = false;
-      autoS = false;
-
-    } else if ((char)mqttClient.read() == "a") {
-      autoS = true;
-    }
+    message[index] = mqttClient.read();
+    index++;
   }
-  Serial.println(autoS);
-  Serial.println(enable);
+  
+  // add a null terminator to the end of the buffer
+  message[messageSize] = '\0';
+
+  // print the complete message
+  Serial.print("Received message: ");
+  Serial.println(message);
+
+  if (strstr(message, "on") != NULL) {
+    Serial.println("The message contains the word 'on'");
+    autoS = false;
+    enable = true;
+  } else if (strstr(message, "off") != NULL) {
+    Serial.println("The message contains the word 'off'");
+    autoS = false;
+    enable = false;
+  } else if (strstr(message, "auto") != NULL) {
+    Serial.println("The message contains the word 'auto'");
+    autoS = true;
+    enable = false;
+  } else {
+    Serial.println("The message does not contain any of the keywords");
+  }
 }
